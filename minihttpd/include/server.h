@@ -3,4 +3,10 @@
 
 void iniciar_servidor(const char *puerto);
 
-#endif
+/* Helper to create a passive TCP socket bound to the given service/port */
+int passiveTCP(const char *service, int qlen);
+
+/* Process a client request on the given fd */
+void procesar_peticion(int client_fd);
+
+#endif // SERVER_H
