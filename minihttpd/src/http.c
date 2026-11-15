@@ -1,63 +1,125 @@
 #include <string.h>
+#include <strings.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "http.h"
 
-/* Simple parser for a GET request line. Assumes request starts with the request line.
-   Example request line: "GET /path HTTP/1.1" */
-int parse_http_request(const char *request,
-                       char *method, size_t method_len,
-                       char *uri, size_t uri_len,
-                       char *http_version, size_t version_len) {
-    if (!request || !method || !uri || !http_version) return -1;
+#define MAX_REQUEST_LINE 8192
+#define MAX_LINE_BUF 1024
 
-    // extract the first line (up to \r\n)
-    const char *eol = strstr(request, "\r\n");
-    size_t line_len = eol ? (size_t)(eol - request) : strlen(request);
-    char line[1024];
-    if (line_len >= sizeof(line)) return -1;
-    memcpy(line, request, line_len);
+/* Parse a single header line "Name: value" and store recognized headers */
+static void parse_header_line(const char *line, http_request_t *req) {
+    const char *colon = strchr(line, ':');
+    if (!colon) return;
+
+    size_t name_len = (size_t)(colon - line);
+    const char *value = colon + 1;
+    /* Skip leading whitespace in value */
+    while (*value == ' ' || *value == '\t') value++;
+
+    if (name_len == 4 && strncasecmp(line, "Host", 4) == 0) {
+        strncpy(req->host, value, sizeof(req->host) - 1);
+        req->host[sizeof(req->host) - 1] = '\0';
+    } else if (name_len == 10 && strncasecmp(line, "Connection", 10) == 0) {
+        strncpy(req->connection, value, sizeof(req->connection) - 1);
+        req->connection[sizeof(req->connection) - 1] = '\0';
+    } else if (name_len == 10 && strncasecmp(line, "User-Agent", 10) == 0) {
+        strncpy(req->user_agent, value, sizeof(req->user_agent) - 1);
+        req->user_agent[sizeof(req->user_agent) - 1] = '\0';
+    }
+}
+
+int parse_http_request(const char *raw, http_request_t *req) {
+    if (!raw || !req) return -1;
+
+    memset(req, 0, sizeof(*req));
+
+    /* Validate total request size */
+    size_t raw_len = strlen(raw);
+    if (raw_len > MAX_REQUEST_LINE) return -2;
+
+    /* Extract the first line (up to \r\n) */
+    const char *eol = strstr(raw, "\r\n");
+    size_t line_len = eol ? (size_t)(eol - raw) : raw_len;
+
+    if (line_len >= MAX_LINE_BUF) return -2; /* Request line too long */
+
+    char line[MAX_LINE_BUF];
+    memcpy(line, raw, line_len);
     line[line_len] = '\0';
 
-    // split by spaces
-    char *tok_method = strtok(line, " ");
-    char *tok_uri = strtok(NULL, " ");
-    char *tok_version = strtok(NULL, " ");
+    /* Split request line by spaces */
+    char *saveptr;
+    char *tok_method  = strtok_r(line, " ", &saveptr);
+    char *tok_uri     = strtok_r(NULL, " ", &saveptr);
+    char *tok_version = strtok_r(NULL, " ", &saveptr);
 
     if (!tok_method || !tok_uri || !tok_version) return -1;
-    if (strlen(tok_method) >= method_len || strlen(tok_uri) >= uri_len || strlen(tok_version) >= version_len)
-        return -1;
 
-    strcpy(method, tok_method);
-    strcpy(uri, tok_uri);
-    strcpy(http_version, tok_version);
+    /* Validate field sizes before copying */
+    if (strlen(tok_method) >= sizeof(req->method))   return -2;
+    if (strlen(tok_uri) >= sizeof(req->uri))         return -2;
+    if (strlen(tok_version) >= sizeof(req->version)) return -2;
+
+    strncpy(req->method, tok_method, sizeof(req->method) - 1);
+    req->method[sizeof(req->method) - 1] = '\0';
+
+    strncpy(req->uri, tok_uri, sizeof(req->uri) - 1);
+    req->uri[sizeof(req->uri) - 1] = '\0';
+
+    strncpy(req->version, tok_version, sizeof(req->version) - 1);
+    req->version[sizeof(req->version) - 1] = '\0';
+
+    /* Parse headers (Host, Connection, User-Agent) */
+    if (eol) {
+        const char *hdr_start = eol + 2; /* skip past \r\n */
+        while (*hdr_start && *hdr_start != '\r') {
+            const char *hdr_end = strstr(hdr_start, "\r\n");
+            if (!hdr_end) break;
+
+            size_t hdr_len = (size_t)(hdr_end - hdr_start);
+            if (hdr_len == 0) break; /* empty line = end of headers */
+            if (hdr_len >= MAX_LINE_BUF) {
+                hdr_start = hdr_end + 2;
+                continue; /* skip oversized header line */
+            }
+
+            char hdr_line[MAX_LINE_BUF];
+            memcpy(hdr_line, hdr_start, hdr_len);
+            hdr_line[hdr_len] = '\0';
+
+            parse_header_line(hdr_line, req);
+            hdr_start = hdr_end + 2;
+        }
+    }
+
     return 0;
 }
 
-int build_http_response(int status_code, const char *status_msg,
-                       const char *content_type,
-                       const char *body, size_t body_len,
-                       char *out, size_t out_len) {
+int build_http_response_header(int status_code, const char *status_msg,
+                               const char *content_type, size_t body_len,
+                               int keep_alive,
+                               char *out, size_t out_len) {
     if (!out) return -1;
+
     int n = snprintf(out, out_len,
                      "HTTP/1.1 %d %s\r\n"
                      "Server: MiniHTTPd\r\n"
-                     "Connection: close\r\n",
-                     status_code, status_msg ? status_msg : "");
+                     "Connection: %s\r\n",
+                     status_code, status_msg ? status_msg : "",
+                     keep_alive ? "keep-alive" : "close");
     if (n < 0 || (size_t)n >= out_len) return -1;
     size_t used = (size_t)n;
+
     if (content_type) {
         n = snprintf(out + used, out_len - used, "Content-Type: %s\r\n", content_type);
         if (n < 0 || (size_t)n >= out_len - used) return -1;
         used += (size_t)n;
     }
+
     n = snprintf(out + used, out_len - used, "Content-Length: %zu\r\n\r\n", body_len);
     if (n < 0 || (size_t)n >= out_len - used) return -1;
     used += (size_t)n;
-    if (body && body_len > 0) {
-        if (used + body_len > out_len) return -1;
-        memcpy(out + used, body, body_len);
-        used += body_len;
-    }
+
     return (int)used;
 }
