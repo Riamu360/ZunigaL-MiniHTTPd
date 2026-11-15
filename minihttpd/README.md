@@ -1,4 +1,4 @@
-# MiniHTTPd
+# Proyecto Bimestral - MiniHTTPd
 
 Servidor HTTP/1.1 basico implementado en C para Linux.
 
@@ -22,13 +22,7 @@ make
 ## Ejecucion
 
 ```bash
-./minihttpd [puerto]
-```
-
-Por defecto escucha en el puerto 80. Ejemplo con puerto 8080:
-
-```bash
-./minihttpd 8080
+./minihttpd
 ```
 
 ## Estructura
