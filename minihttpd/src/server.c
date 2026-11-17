@@ -21,7 +21,7 @@
 #define PATH_MAX 4096
 #endif
 
-/* Helper: send an HTTP error response and return keep_alive status */
+/* Auxiliar: enviar una respuesta de error HTTP y devolver el estado de keep_alive */
 static int send_error(int client_fd, int code, const char *msg, int keep_alive) {
     char header[512];
     size_t body_len = strlen(msg);
@@ -40,9 +40,9 @@ int passiveTCP(const char *service, int qlen) {
     int opt = 1;
 
     memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_UNSPEC;      /* IPv4 or IPv6 */
+    hints.ai_family = AF_UNSPEC;      /* IPv4 o IPv6 */
     hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_PASSIVE;      /* bind to any address */
+    hints.ai_flags = AI_PASSIVE;      /* enlazar a cualquier dirección */
 
     int rc = getaddrinfo(NULL, service, &hints, &res);
     if (rc != 0) {
@@ -54,7 +54,7 @@ int passiveTCP(const char *service, int qlen) {
         sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
         if (sockfd < 0) continue;
         setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-        if (bind(sockfd, p->ai_addr, p->ai_addrlen) == 0) break; /* success */
+        if (bind(sockfd, p->ai_addr, p->ai_addrlen) == 0) break; /* éxito */
         close(sockfd);
         sockfd = -1;
     }
@@ -76,38 +76,38 @@ int procesar_peticion(int client_fd) {
     const size_t REQ_BUF = 8192;
     char raw[REQ_BUF];
     ssize_t n = recv(client_fd, raw, REQ_BUF - 1, 0);
-    if (n <= 0) return 0; /* connection closed or error — close fd */
+    if (n <= 0) return 0; /* conexión cerrada o error — cerrar fd */
     raw[n] = '\0';
 
-    /* Parse HTTP request (request line + headers) */
+    /* Analizar petición HTTP (línea de petición + cabeceras) */
     http_request_t req;
     int parse_result = parse_http_request(raw, &req);
 
     if (parse_result == -2) {
-        /* Request too large (URI, request line, or headers exceeded limits) */
+        /* Petición demasiado grande (la URI, la línea de petición o las cabeceras superaron los límites) */
         return send_error(client_fd, 400, "Bad Request", 0);
     }
     if (parse_result != 0) {
         return send_error(client_fd, 400, "Bad Request", 0);
     }
 
-    /* Determine keep-alive based on Connection header and HTTP version */
+    /* Determinar keep-alive según la cabecera Connection y la versión HTTP */
     int keep_alive;
     if (strcasecmp(req.connection, "close") == 0) {
         keep_alive = 0;
     } else if (strcasecmp(req.connection, "keep-alive") == 0) {
         keep_alive = 1;
     } else {
-        /* Default: HTTP/1.1 keeps alive, HTTP/1.0 closes */
+        /* Por defecto: HTTP/1.1 mantiene la conexión abierta, HTTP/1.0 la cierra */
         keep_alive = (strstr(req.version, "1.1") != NULL) ? 1 : 0;
     }
 
-    /* Only GET is allowed */
+    /* Solo se permite GET */
     if (strcmp(req.method, "GET") != 0) {
         return send_error(client_fd, 405, "Method Not Allowed", keep_alive);
     }
 
-    /* Open the requested static file */
+    /* Abrir el archivo estático solicitado */
     off_t file_size = 0;
     char real_path[PATH_MAX];
     int fd = open_static_file(req.uri, &file_size, real_path, sizeof(real_path));
@@ -117,10 +117,10 @@ int procesar_peticion(int client_fd) {
         return send_error(client_fd, code, msg, keep_alive);
     }
 
-    /* Determine MIME type from file extension */
+    /* Determinar el tipo MIME a partir de la extensión del archivo */
     const char *mime = get_mime_type(real_path);
 
-    /* Read file content into memory */
+    /* Leer el contenido del archivo en memoria */
     char *body = malloc((size_t)file_size);
     if (!body) {
         close(fd);
@@ -133,7 +133,7 @@ int procesar_peticion(int client_fd) {
         return send_error(client_fd, 500, "Internal Server Error", 0);
     }
 
-    /* Build and send response header */
+    /* Construir y enviar la cabecera de respuesta */
     char header[1024];
     int hdr_len = build_http_response_header(200, "OK", mime,
                                              (size_t)file_size, keep_alive,
@@ -144,7 +144,7 @@ int procesar_peticion(int client_fd) {
     }
     send(client_fd, header, hdr_len, 0);
 
-    /* Send body in chunks */
+    /* Enviar el cuerpo en fragmentos */
     size_t total_sent = 0;
     while (total_sent < (size_t)file_size) {
         ssize_t sent = send(client_fd, body + total_sent,

@@ -20,18 +20,18 @@ int main(int argc, char *argv[]) {
     }
     printf("El Servidor MiniHTTPd se está ejecutando en el puerto %s...\n", port);
 
-    /* Create passive TCP socket */
+    /* Crear socket TCP pasivo */
     int sd = passiveTCP(port, QLEN);
     if (sd < 0) {
         fprintf(stderr, "Error: no se pudo iniciar el servidor\n");
         exit(1);
     }
 
-    /* Set listening socket to non-blocking */
+    /* Configurar el socket de escucha en modo no bloqueante */
     int flags = fcntl(sd, F_GETFL, 0);
     fcntl(sd, F_SETFL, flags | O_NONBLOCK);
 
-    /* Create epoll instance */
+    /* Crear instancia de epoll */
     int epfd = epoll_create1(0);
     if (epfd < 0) {
         perror("epoll_create1");
@@ -39,7 +39,7 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    /* Register listening socket in epoll */
+    /* Registrar el socket de escucha en epoll */
     struct epoll_event ev, events[MAX_EVENTS];
     ev.events = EPOLLIN;
     ev.data.fd = sd;
@@ -50,7 +50,7 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    /* Main event loop */
+    /* Bucle principal de eventos */
     while (1) {
         int nfds = epoll_wait(epfd, events, MAX_EVENTS, -1);
         if (nfds < 0) {
@@ -60,7 +60,7 @@ int main(int argc, char *argv[]) {
         }
         for (int i = 0; i < nfds; ++i) {
             if (events[i].data.fd == sd) {
-                /* New incoming connection */
+                /* Nueva conexión entrante */
                 struct sockaddr_storage clt_addr;
                 socklen_t addr_len = sizeof(clt_addr);
                 int nsd = accept(sd, (struct sockaddr *)&clt_addr, &addr_len);
@@ -72,16 +72,16 @@ int main(int argc, char *argv[]) {
                     epoll_ctl(epfd, EPOLL_CTL_ADD, nsd, &ev);
                 }
             } else {
-                /* Client data ready — process request */
+                /* Datos del cliente listos — procesar petición */
                 int client_fd = events[i].data.fd;
                 int keep_alive = procesar_peticion(client_fd);
                 if (keep_alive) {
-                    /* Persistent connection: keep fd in epoll for next request */
+                    /* Conexión persistente: mantener el fd en epoll para la siguiente petición */
                     ev.events = EPOLLIN;
                     ev.data.fd = client_fd;
                     epoll_ctl(epfd, EPOLL_CTL_MOD, client_fd, &ev);
                 } else {
-                    /* Close connection */
+                    /* Cerrar conexión */
                     epoll_ctl(epfd, EPOLL_CTL_DEL, client_fd, NULL);
                     close(client_fd);
                 }

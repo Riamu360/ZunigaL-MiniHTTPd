@@ -1,12 +1,12 @@
 #ifndef SERVER_H
 #define SERVER_H
 
-/* Create a passive TCP socket bound to the given service/port */
+/* Crea un socket TCP pasivo enlazado al servicio/puerto indicado */
 int passiveTCP(const char *service, int qlen);
 
-/* Process a client HTTP request on the given fd.
-   Returns 1 if the connection should be kept alive (persistent),
-   or 0 if it should be closed. */
+/* Procesa una petición HTTP del cliente en el descriptor de archivo (fd) dado.
+   Devuelve 1 si la conexión debe mantenerse activa (persistente),
+   o 0 si debe cerrarse. */
 int procesar_peticion(int client_fd);
 
-#endif // SERVER_H
+#endif

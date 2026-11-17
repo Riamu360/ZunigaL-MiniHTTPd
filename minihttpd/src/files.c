@@ -23,10 +23,10 @@ int open_static_file(const char *uri, off_t *file_size, char *resolved_path, siz
     snprintf(requested, sizeof(requested), "%s%s", base_dir, resource);
 
     if (realpath(requested, real_path) == NULL) {
-        return -404; // Not Found
+        return -404; // No encontrado
     }
     if (strncmp(base_dir, real_path, strlen(base_dir)) != 0) {
-        return -403; // Forbidden
+        return -403; // Prohibido
     }
 
     int fd = open(real_path, O_RDONLY);

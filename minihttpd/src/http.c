@@ -7,14 +7,14 @@
 #define MAX_REQUEST_LINE 8192
 #define MAX_LINE_BUF 1024
 
-/* Parse a single header line "Name: value" and store recognized headers */
+/* Analiza una sola línea de cabecera "Nombre: valor" y guarda las cabeceras reconocidas */
 static void parse_header_line(const char *line, http_request_t *req) {
     const char *colon = strchr(line, ':');
     if (!colon) return;
 
     size_t name_len = (size_t)(colon - line);
     const char *value = colon + 1;
-    /* Skip leading whitespace in value */
+    /* Omitir espacios en blanco iniciales en el valor */
     while (*value == ' ' || *value == '\t') value++;
 
     if (name_len == 4 && strncasecmp(line, "Host", 4) == 0) {
@@ -34,21 +34,21 @@ int parse_http_request(const char *raw, http_request_t *req) {
 
     memset(req, 0, sizeof(*req));
 
-    /* Validate total request size */
+    /* Validar el tamaño total de la petición */
     size_t raw_len = strlen(raw);
     if (raw_len > MAX_REQUEST_LINE) return -2;
 
-    /* Extract the first line (up to \r\n) */
+    /* Extraer la primera línea (hasta \r\n) */
     const char *eol = strstr(raw, "\r\n");
     size_t line_len = eol ? (size_t)(eol - raw) : raw_len;
 
-    if (line_len >= MAX_LINE_BUF) return -2; /* Request line too long */
+    if (line_len >= MAX_LINE_BUF) return -2; /* Línea de petición demasiado larga */
 
     char line[MAX_LINE_BUF];
     memcpy(line, raw, line_len);
     line[line_len] = '\0';
 
-    /* Split request line by spaces */
+    /* Dividir la línea de petición por espacios */
     char *saveptr;
     char *tok_method  = strtok_r(line, " ", &saveptr);
     char *tok_uri     = strtok_r(NULL, " ", &saveptr);
@@ -56,7 +56,7 @@ int parse_http_request(const char *raw, http_request_t *req) {
 
     if (!tok_method || !tok_uri || !tok_version) return -1;
 
-    /* Validate field sizes before copying */
+    /* Validar tamaños de campos antes de copiar */
     if (strlen(tok_method) >= sizeof(req->method))   return -2;
     if (strlen(tok_uri) >= sizeof(req->uri))         return -2;
     if (strlen(tok_version) >= sizeof(req->version)) return -2;
@@ -70,18 +70,18 @@ int parse_http_request(const char *raw, http_request_t *req) {
     strncpy(req->version, tok_version, sizeof(req->version) - 1);
     req->version[sizeof(req->version) - 1] = '\0';
 
-    /* Parse headers (Host, Connection, User-Agent) */
+    /* Analizar cabeceras (Host, Connection, User-Agent) */
     if (eol) {
-        const char *hdr_start = eol + 2; /* skip past \r\n */
+        const char *hdr_start = eol + 2; /* saltar después de \r\n */
         while (*hdr_start && *hdr_start != '\r') {
             const char *hdr_end = strstr(hdr_start, "\r\n");
             if (!hdr_end) break;
 
             size_t hdr_len = (size_t)(hdr_end - hdr_start);
-            if (hdr_len == 0) break; /* empty line = end of headers */
+            if (hdr_len == 0) break; /* línea vacía = fin de cabeceras */
             if (hdr_len >= MAX_LINE_BUF) {
                 hdr_start = hdr_end + 2;
-                continue; /* skip oversized header line */
+                continue; /* omitir línea de cabecera demasiado grande */
             }
 
             char hdr_line[MAX_LINE_BUF];
